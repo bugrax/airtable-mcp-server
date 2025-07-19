@@ -29,11 +29,11 @@ WORKDIR /app
 RUN apk add --no-cache curl && \
     rm -rf /var/cache/apk/*
 
-# Copy package.json for production dependencies
+# Copy package.json for dependencies
 COPY package*.json ./
 
-# Install only production dependencies
-RUN npm ci --production --no-audit --no-fund && \
+# Install all dependencies (production dependencies are needed at runtime)
+RUN npm ci --no-audit --no-fund && \
     npm cache clean --force
 
 # Copy built application from builder stage
