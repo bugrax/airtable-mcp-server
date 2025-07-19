@@ -1,0 +1,67 @@
+# syntax=docker/dockerfile:1.7
+# Railway-compatible Dockerfile for airtable-mcp-server
+
+# --- Stage 1: Builder ---
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Install system dependencies for native modules
+RUN apk add --no-cache python3 make g++ && \
+    rm -rf /var/cache/apk/*
+
+# Copy package files and tsconfig
+COPY package*.json tsconfig*.json ./
+
+# Install all dependencies (including devDependencies for build)
+RUN npm ci --no-audit --no-fund
+
+# Copy source code
+COPY src ./src
+
+# Build the application
+RUN npm run build
+
+# --- Stage 2: Runtime ---
+FROM node:20-alpine AS runtime
+WORKDIR /app
+
+# Install system dependencies
+RUN apk add --no-cache curl && \
+    rm -rf /var/cache/apk/*
+
+# Copy package.json for production dependencies
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm ci --production --no-audit --no-fund && \
+    npm cache clean --force
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+
+# Add metadata labels
+LABEL org.opencontainers.image.source="https://github.com/bugrax/airtable-mcp-server"
+LABEL org.opencontainers.image.description="Airtable MCP Server - A Model Context Protocol server that provides read and write access to Airtable databases"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.title="airtable-mcp-server"
+LABEL org.opencontainers.image.version="1.5.0"
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001 && \
+    chown -R nodejs:nodejs /app
+USER nodejs
+
+# Set Railway-optimized environment variables
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+
+# Expose port (Railway will set PORT automatically)
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://127.0.0.1:${PORT:-3000}/health || exit 1
+
+# Start the application
+CMD ["node", "dist/index.js"]
