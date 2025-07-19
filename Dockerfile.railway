@@ -2,7 +2,7 @@
 # Railway-compatible Dockerfile for airtable-mcp-server
 
 # --- Stage 1: Builder ---
-FROM node:20-alpine AS builder
+FROM node:18-alpine AS builder
 WORKDIR /app
 
 # Install system dependencies for native modules
@@ -10,34 +10,28 @@ RUN apk add --no-cache python3 make g++ && \
     rm -rf /var/cache/apk/*
 
 # Copy package files and tsconfig
-COPY package*.json tsconfig*.json ./
+COPY package.json package-lock.json ./
 
 # Install all dependencies (including devDependencies for build)
-RUN npm ci --no-audit --no-fund
+RUN npm install
 
-# Copy source code
-COPY src ./src
+# Copy the entire project directory
+COPY . .
 
 # Build the application
 RUN npm run build
 
 # --- Stage 2: Runtime ---
-FROM node:20-alpine AS runtime
+FROM node:18-alpine AS runtime
 WORKDIR /app
 
 # Install system dependencies
 RUN apk add --no-cache curl && \
     rm -rf /var/cache/apk/*
 
-# Copy package.json for dependencies
-COPY package*.json ./
-
-# Install all dependencies (production dependencies are needed at runtime)
-RUN npm ci --no-audit --no-fund && \
-    npm cache clean --force
-
-# Copy built application from builder stage
-COPY --from=builder /app/dist ./dist
+# Copy the build files from the previous stage
+COPY --from=builder /app/dist /app/dist
+COPY --from=builder /app/package.json /app/package-lock.json /app/node_modules /app/
 
 # Add metadata labels
 LABEL org.opencontainers.image.source="https://github.com/bugrax/airtable-mcp-server"
